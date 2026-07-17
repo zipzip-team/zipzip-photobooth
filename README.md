@@ -16,7 +16,7 @@ Mac 카메라로 사진을 촬영하고 ZIPZIP 전용 프레임을 적용해 인
   <tr>
     <td bgcolor="#666666"><img src="./Resources/Filters/orange_logo.png" alt="오렌지 로고 프레임"></td>
     <td bgcolor="#666666"><img src="./Resources/Filters/white_logo.png" alt="화이트 로고 프레임"></td>
-    <td bgcolor="#666666"><img src="./Resources/Filters/new-house-frame.svg" alt="하우스 프레임"></td>
+    <td bgcolor="#666666"><img src="./Resources/Filters/new-house-frame2.svg" alt="하우스 프레임"></td>
     <td bgcolor="#666666"><img src="./Resources/Filters/digi.png" alt="디지털 카메라 프레임"></td>
   </tr>
 </table>

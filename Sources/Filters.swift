@@ -27,7 +27,7 @@ enum BoothFilter: String, CaseIterable, Identifiable {
         case .whiteLogo:
             return "white_logo.png"
         case .house:
-            return "new-house-frame.svg"
+            return "new-house-frame2.svg"
         case .digiCam:
             return "digi.png"
         }
