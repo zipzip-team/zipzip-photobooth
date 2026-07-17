@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreImage
 
 enum CameraAuthorizationState {
     case unknown
@@ -24,9 +25,12 @@ final class CameraModel: NSObject, ObservableObject, @unchecked Sendable {
     @Published var capturedImage: NSImage?
     @Published var authorizationState: CameraAuthorizationState = .unknown
 
-    private let output = AVCapturePhotoOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "PhotoPrintBooth.CameraSession")
-    private var pendingOrientation: PrintOrientation = .landscape
+    private let videoQueue = DispatchQueue(label: "PhotoPrintBooth.VideoFrames")
+    private let frameLock = NSLock()
+    private let frameContext = CIContext()
+    private var latestPixelBuffer: CVPixelBuffer?
 
     func requestAndStart() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -45,21 +49,27 @@ final class CameraModel: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func capturePhoto(orientation: PrintOrientation) {
-        pendingOrientation = orientation
-        let settings = AVCapturePhotoSettings()
-        settings.photoQualityPrioritization = .quality
-        if let connection = output.connection(with: .video), connection.isVideoMirroringSupported {
-            connection.automaticallyAdjustsVideoMirroring = false
-            connection.isVideoMirrored = false
-        }
-        output.capturePhoto(with: settings, delegate: self)
+        frameLock.lock()
+        let pixelBuffer = latestPixelBuffer
+        frameLock.unlock()
+
+        guard let pixelBuffer else { return }
+
+        let frame = CIImage(cvPixelBuffer: pixelBuffer).oriented(.upMirrored)
+        guard let cgImage = frameContext.createCGImage(frame, from: frame.extent) else { return }
+
+        let image = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: cgImage.width, height: cgImage.height)
+        )
+        capturedImage = ImageProcessor.croppedToRatio(image: image, ratio: orientation.ratio) ?? image
     }
 
     private func configureAndStart() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.session.beginConfiguration()
-            self.session.sessionPreset = .photo
+            self.session.sessionPreset = .high
 
             defer {
                 self.session.commitConfiguration()
@@ -78,23 +88,35 @@ final class CameraModel: NSObject, ObservableObject, @unchecked Sendable {
 
             self.session.addInput(input)
 
-            if self.session.canAddOutput(self.output) {
-                self.session.addOutput(self.output)
-                self.output.maxPhotoQualityPrioritization = .quality
+            self.videoOutput.alwaysDiscardsLateVideoFrames = true
+            self.videoOutput.videoSettings = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            ]
+            self.videoOutput.setSampleBufferDelegate(self, queue: self.videoQueue)
+
+            if self.session.canAddOutput(self.videoOutput) {
+                self.session.addOutput(self.videoOutput)
+
+                if let connection = self.videoOutput.connection(with: .video),
+                   connection.isVideoMirroringSupported {
+                    connection.automaticallyAdjustsVideoMirroring = false
+                    connection.isVideoMirrored = false
+                }
             }
         }
     }
 }
 
-extension CameraModel: AVCapturePhotoCaptureDelegate {
-    nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard error == nil,
-              let data = photo.fileDataRepresentation(),
-              let image = NSImage(data: data) else { return }
+extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        Task { @MainActor in
-            let mirrored = ImageProcessor.mirrored(image: image) ?? image
-            self.capturedImage = ImageProcessor.croppedToRatio(image: mirrored, ratio: self.pendingOrientation.ratio) ?? mirrored
-        }
+        frameLock.lock()
+        latestPixelBuffer = pixelBuffer
+        frameLock.unlock()
     }
 }

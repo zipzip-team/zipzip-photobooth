@@ -5,10 +5,6 @@ enum PrintOrientation {
     case landscape
     case portrait
 
-    mutating func toggle() {
-        self = self == .landscape ? .portrait : .landscape
-    }
-
     var ratio: CGFloat {
         switch self {
         case .landscape:
@@ -18,20 +14,11 @@ enum PrintOrientation {
         }
     }
 
-    var iconName: String {
-        switch self {
-        case .landscape:
-            return "rotate.right"
-        case .portrait:
-            return "rotate.left"
-        }
-    }
 }
 
 struct ContentView: View {
     @EnvironmentObject private var camera: CameraModel
     @State private var selectedFilter: BoothFilter = .orangeLogo
-    @State private var orientation: PrintOrientation = .landscape
     @State private var isShowingFilters = false
 
     private let filters: [BoothFilter] = [.orangeLogo, .whiteLogo, .house, .digiCam]
@@ -40,12 +27,14 @@ struct ContentView: View {
         ZStack {
             Color.white.ignoresSafeArea()
 
-            PrintRatioFrame(orientation: orientation) {
+            PrintRatioFrame(orientation: .landscape) {
                 ZStack {
                     if let image = camera.capturedImage {
                         FilteredImageView(image: image, filter: selectedFilter)
+                            .id(selectedFilter.id)
                     } else {
                         CameraPreview(session: camera.session)
+                            .scaleEffect(x: -1, y: 1)
                         FilterOverlayView(filter: selectedFilter)
                     }
                 }
@@ -53,7 +42,6 @@ struct ContentView: View {
             .ignoresSafeArea()
 
             VStack {
-                topBar
                 Spacer()
                 bottomBar
             }
@@ -70,34 +58,36 @@ struct ContentView: View {
                 )
             }
         }
+        .background {
+            KeyboardEventMonitor(onKeyDown: handleKeyDown)
+                .allowsHitTesting(false)
+        }
     }
 
-    private var topBar: some View {
-        HStack {
-            Spacer()
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard !event.isARepeat, NSApp.modalWindow == nil else { return false }
 
-            Button {
-                orientation.toggle()
-            } label: {
-                Image(systemName: orientation.iconName)
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 46, height: 38)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 10))
-            .help("방향 전환")
+        switch event.keyCode {
+        case 49: // Space
+            guard camera.capturedImage == nil,
+                  camera.authorizationState == .authorized,
+                  !isShowingFilters else { return false }
+            camera.capturePhoto(orientation: .landscape)
+            return true
+
+        case 15: // R
+            guard camera.capturedImage != nil, !isShowingFilters else { return false }
+            camera.capturedImage = nil
+            return true
+
+        case 53: // Escape
+            guard isShowingFilters else { return false }
+            isShowingFilters = false
+            return true
+
+        default:
+            return false
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .frame(height: 64)
-        .background(
-            LinearGradient(
-                colors: [.black.opacity(0.48), .black.opacity(0)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
     }
 
     private var bottomBar: some View {
@@ -110,8 +100,11 @@ struct ContentView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 72, height: 40)
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .frame(width: 72, height: 40)
+                .contentShape(Capsule())
                 .background(.white.opacity(camera.capturedImage == nil ? 0.08 : 0.16), in: Capsule())
                 .disabled(camera.capturedImage == nil)
 
@@ -127,32 +120,59 @@ struct ContentView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 92, height: 40)
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .focusable(false)
+                .frame(width: 92, height: 40)
+                .contentShape(Capsule())
                 .background(.white.opacity(0.16), in: Capsule())
             }
 
-            Button {
-                if camera.capturedImage == nil {
-                    camera.capturePhoto(orientation: orientation)
-                } else {
-                    PrintRenderer.print(image: camera.capturedImage, filter: selectedFilter, orientation: orientation)
-                }
-            } label: {
-                if camera.capturedImage == nil {
+            if camera.capturedImage == nil {
+                Button {
+                    camera.capturePhoto(orientation: .landscape)
+                } label: {
                     CaptureIcon()
                         .frame(width: 74, height: 74)
-                } else {
-                    Text("Print")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(.black)
-                        .frame(width: 96, height: 54)
-                        .background(.white, in: Capsule())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(camera.authorizationState != .authorized)
+            } else {
+                HStack(spacing: 12) {
+                    Button {
+                        PrintRenderer.saveJPEG(image: camera.capturedImage, filter: selectedFilter)
+                    } label: {
+                        Text("Save")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 96, height: 54)
+                            .contentShape(Capsule())
+                            .background(.black.opacity(0.34), in: Capsule())
+                            .overlay {
+                                Capsule().stroke(.white.opacity(0.75), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 96, height: 54)
+                    .contentShape(Capsule())
+
+                    Button {
+                        PrintRenderer.print(image: camera.capturedImage, filter: selectedFilter, orientation: .landscape)
+                    } label: {
+                        Text("Print")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.black)
+                            .frame(width: 96, height: 54)
+                            .contentShape(Capsule())
+                            .background(.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 96, height: 54)
+                    .contentShape(Capsule())
                 }
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.space, modifiers: [])
-            .disabled(camera.authorizationState != .authorized)
         }
         .padding(.horizontal, 32)
         .padding(.bottom, 26)
@@ -167,9 +187,58 @@ struct ContentView: View {
     }
 }
 
+struct KeyboardEventMonitor: NSViewRepresentable {
+    let onKeyDown: (NSEvent) -> Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onKeyDown: onKeyDown)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.start()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onKeyDown = onKeyDown
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stop()
+    }
+
+    final class Coordinator {
+        var onKeyDown: (NSEvent) -> Bool
+        private var monitor: Any?
+
+        init(onKeyDown: @escaping (NSEvent) -> Bool) {
+            self.onKeyDown = onKeyDown
+        }
+
+        func start() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self else { return event }
+                return self.onKeyDown(event) ? nil : event
+            }
+        }
+
+        func stop() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        deinit {
+            stop()
+        }
+    }
+}
+
 struct CaptureIcon: View {
     var body: some View {
-        if let image = ResourceImage.load(named: "사진찍기 아이콘", ext: "png") {
+        if let image = ResourceImage.load(named: "new-camera-icon", ext: "svg") {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
@@ -271,6 +340,7 @@ struct FilterPickerOverlay: View {
                             FilterTile(filter: filter, isSelected: selectedFilter == filter)
                         }
                         .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
             }
@@ -313,6 +383,7 @@ struct FilterTile: View {
                 .lineLimit(1)
         }
         .padding(8)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
         .background(isSelected ? .white.opacity(0.18) : .white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 }

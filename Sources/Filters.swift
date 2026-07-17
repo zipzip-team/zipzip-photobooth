@@ -27,7 +27,7 @@ enum BoothFilter: String, CaseIterable, Identifiable {
         case .whiteLogo:
             return "white_logo.png"
         case .house:
-            return "house.png"
+            return "new-house-frame.svg"
         case .digiCam:
             return "digi.png"
         }
@@ -52,9 +52,13 @@ struct FilteredImageView: View {
     let filter: BoothFilter
 
     var body: some View {
-        Image(nsImage: ImageProcessor.render(image: image, filter: filter) ?? image)
-            .resizable()
-            .scaledToFill()
+        ZStack {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+
+            FilterOverlayView(filter: filter)
+        }
     }
 }
 
@@ -105,27 +109,6 @@ enum ImageProcessor {
         let output = NSImage(size: size)
         output.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .high
-        NSImage(cgImage: cgImage, size: size)
-            .draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
-        output.unlockFocus()
-        return output
-    }
-
-    static func mirrored(image: NSImage) -> NSImage? {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            return nil
-        }
-
-        let size = NSSize(width: cgImage.width, height: cgImage.height)
-        let output = NSImage(size: size)
-        output.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-
-        let transform = NSAffineTransform()
-        transform.translateX(by: size.width, yBy: 0)
-        transform.scaleX(by: -1, yBy: 1)
-        transform.concat()
-
         NSImage(cgImage: cgImage, size: size)
             .draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
         output.unlockFocus()

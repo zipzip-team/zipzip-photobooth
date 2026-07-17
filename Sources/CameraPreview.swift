@@ -8,13 +8,13 @@ struct CameraPreview: NSViewRepresentable {
         let view = PreviewView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
-        view.enableMirroring()
+        view.disableMirroring()
         return view
     }
 
     func updateNSView(_ nsView: PreviewView, context: Context) {
         nsView.previewLayer.session = session
-        nsView.enableMirroring()
+        nsView.disableMirroring()
     }
 }
 
@@ -39,17 +39,17 @@ final class PreviewView: NSView {
         layer as! AVCaptureVideoPreviewLayer
     }
 
-    func enableMirroring() {
+    func disableMirroring() {
         guard let connection = previewLayer.connection else { return }
         if connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false
-            connection.isVideoMirrored = true
+            connection.isVideoMirrored = false
         }
     }
 
     override func layout() {
         super.layout()
-        enableMirroring()
+        disableMirroring()
     }
 
     override var wantsUpdateLayer: Bool {

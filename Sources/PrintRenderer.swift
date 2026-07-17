@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 enum PrintRenderer {
     static let paperSizeMillimeters = CGSize(width: 100, height: 148)
@@ -25,6 +26,50 @@ enum PrintRenderer {
         operation.showsPrintPanel = true
         operation.showsProgressPanel = true
         operation.run()
+    }
+
+    static func saveJPEG(image: NSImage?, filter: BoothFilter) {
+        guard let image else { return }
+
+        let filtered = ImageProcessor.render(image: image, filter: filter) ?? image
+        let exportImage = ImageProcessor.normalized(image: filtered) ?? filtered
+
+        guard let cgImage = exportImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let jpegData = NSBitmapImageRep(cgImage: cgImage).representation(
+                using: .jpeg,
+                properties: [.compressionFactor: 0.95]
+              ) else {
+            showSaveError()
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.jpeg]
+        panel.nameFieldStringValue = defaultJPEGFilename
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try jpegData.write(to: url, options: .atomic)
+        } catch {
+            showSaveError(error)
+        }
+    }
+
+    private static var defaultJPEGFilename: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "PhotoPrintBooth-\(formatter.string(from: Date())).jpg"
+    }
+
+    private static func showSaveError(_ error: Error? = nil) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "사진을 저장할 수 없습니다."
+        alert.informativeText = error?.localizedDescription ?? "JPEG 변환 중 오류가 발생했습니다."
+        alert.runModal()
     }
 }
 
